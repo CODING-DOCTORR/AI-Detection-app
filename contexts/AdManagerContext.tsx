@@ -12,13 +12,15 @@ interface AdManagerContextType {
   isAdReady: boolean;
 }
 
-const AdManagerContext = createContext<AdManagerContextType>({
-  showAd: async () => false,
-  isAdLoading: false,
-  isAdReady: false,
-});
+const AdManagerContext = createContext<AdManagerContextType | null>(null);
 
-export const useAdManager = () => useContext(AdManagerContext);
+export const useAdManager = () => {
+  const context = useContext(AdManagerContext);
+  if (!context) {
+    throw new Error('useAdManager must be used within an AdManagerProvider');
+  }
+  return context;
+};
 
 export const AdManagerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAdLoading, setIsAdLoading] = useState(false);

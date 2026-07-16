@@ -1,3 +1,4 @@
+// App.tsx
 import "./global.css";
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -6,7 +7,11 @@ import { StatusBar, Platform } from 'react-native';
 import { Provider } from 'react-redux';
 import AppNavigator from './navigation/AppNavigator';
 import * as NavigationBar from 'expo-navigation-bar';
+
+// Store
 import { store } from './store';
+
+// Ad providers (order matters!)
 import { ConsentProvider } from './contexts/ConsentContext';
 import { AppInitializationProvider } from './contexts/AppInitializationContext';
 import { InterstitialTrackingProvider } from './contexts/InterstitialTrackingContext';
@@ -27,7 +32,11 @@ export default function App() {
   return (
     <Provider store={store}>
       <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent={true} />
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor="transparent"
+          translucent={true}
+        />
         <ConsentProvider>
           <AppInitializationProvider>
             <InterstitialTrackingProvider>

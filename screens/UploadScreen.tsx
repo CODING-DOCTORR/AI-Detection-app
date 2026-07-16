@@ -33,6 +33,8 @@ import {
   detectDeepfakeVideo,
 } from '../services/detectionService';
 import Header from '../components/Header';
+import AdComponent from '../components/AdComponent'; // 🆕 Ad component
+import { useButtonInterstitialAd } from '../hooks/ads/useButtonInterstitialAd'; // 🆕 Ad hook
 
 type MediaTab = 'Image' | 'Video' | 'Text' | 'Audio';
 
@@ -64,6 +66,7 @@ const TABS = [
 
 export default function UploadScreen() {
   const navigation = useNavigation<any>();
+  const { handlePress: handleAdPress } = useButtonInterstitialAd('Home_Button_Count'); // 🆕 Ad hook
 
   const [activeTab, setActiveTab] = useState<MediaTab>('Image');
   const [analyzing, setAnalyzing] = useState(false);
@@ -164,12 +167,8 @@ export default function UploadScreen() {
     if (activeTab === 'Text') setTextMedia('');
   }, [activeTab]);
 
-  const handleAnalyze = useCallback(async () => {
-    if (!currentHasData()) {
-      Alert.alert('Nothing to analyze', 'Please add content first.');
-      return;
-    }
-
+  // 🆕 Actual analyze logic (extracted)
+  const performAnalysis = useCallback(async () => {
     setAnalyzing(true);
     try {
       let result;
@@ -224,7 +223,18 @@ export default function UploadScreen() {
     } finally {
       setAnalyzing(false);
     }
-  }, [activeTab, imageMedia, videoMedia, audioMedia, textMedia, navigation, wordCount]);
+  }, [activeTab, imageMedia, videoMedia, audioMedia, textMedia, navigation, wordCount, handleClearMedia]);
+
+  // 🆕 Wrapper — shows interstitial ad every Nth press, then runs analysis
+  const handleAnalyze = useCallback(async () => {
+    if (!currentHasData()) {
+      Alert.alert('Nothing to analyze', 'Please add content first.');
+      return;
+    }
+    // handleAdPress will show interstitial every Nth click (with cooldown)
+    // then call the passed callback (performAnalysis)
+    await handleAdPress(performAnalysis);
+  }, [currentHasData, handleAdPress, performAnalysis]);
 
   const getPickerFn = () => (activeTab === 'Audio' ? handlePickAudio : handlePickMedia);
 
@@ -547,6 +557,9 @@ export default function UploadScreen() {
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* 🆕 BANNER AD (below input area) */}
+            <AdComponent placement="upload_screen" />
 
             {/* SAFETY TIP */}
             <View

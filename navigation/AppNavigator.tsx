@@ -18,15 +18,18 @@ import SplashScreen from '../screens/SplashScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ProfileScreen from '../screens/Profilescreen';
 import ResultScreen from '../screens/ResultScreen';
-import ProAccessScreen from 'screens/ProAccessScreen';
+import ProAccessScreen from '../screens/ProAccessScreen';
 
+// 🆕 Ad hook for tab switching
+import { useBottomTabInterstitialAd } from '../hooks/ads/useBottomTabInterstitialAd';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// ─── Custom Floating TabBar like reference image ──────────────────────────────
+// ─── Custom Floating TabBar ───────────────────────────────────────────────────
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { onTabSwitch } = useBottomTabInterstitialAd(); // 🆕 Interstitial ad hook
 
   return (
     <View
@@ -50,9 +53,13 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           const label = (options.tabBarLabel as string) || (options.title as string) || route.name;
           const isFocused = state.index === index;
 
-          const onPress = () => {
+          const onPress = async () => {
             const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name as never);
+            if (!isFocused && !event.defaultPrevented) {
+              // 🆕 Trigger interstitial (only shows every Nth switch, respects cooldown)
+              await onTabSwitch();
+              navigation.navigate(route.name as never);
+            }
           };
           const onLongPress = () => navigation.emit({ type: 'tabLongPress', target: route.key });
 
@@ -145,7 +152,7 @@ function AppStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={MainTabNavigator} />
-       <Stack.Screen name="ProAccess" component={ProAccessScreen} />
+      <Stack.Screen name="ProAccess" component={ProAccessScreen} />
       <Stack.Screen name="Result" component={ResultScreen} />
       <Stack.Screen name="Profile">
         {(props) => (

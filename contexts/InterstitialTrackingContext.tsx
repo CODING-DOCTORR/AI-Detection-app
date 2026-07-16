@@ -1,4 +1,4 @@
-import { RootState, store } from "@/store";
+import { RootState, store } from "../store";
 import {
   resetCooldown,
   selectIsWithinCooldown,
@@ -6,7 +6,7 @@ import {
   selectShouldShowAd,
   setShouldShowAd,
   trackInterstitialDismissed,
-} from "@/store/slices/interstitialCooldownSlice";
+} from "../store/slices/interstitialCooldownSlice";
 import React, { createContext, ReactNode, useContext } from "react";
 import { useDispatch, useSelector } from "react-redux";
 

@@ -33,7 +33,7 @@ import {
   detectDeepfakeVideo,
 } from '../services/detectionService';
 import Header from '../components/Header';
-import AdComponent from '../components/AdComponent'; // 🆕 Ad component
+import AdComponent from '../components/AdComponent'; 
 import { useButtonInterstitialAd } from '../hooks/ads/useButtonInterstitialAd'; // 🆕 Ad hook
 
 type MediaTab = 'Image' | 'Video' | 'Text' | 'Audio';

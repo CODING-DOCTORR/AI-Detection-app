@@ -17,9 +17,9 @@ import {
   getTrackingPermissionsAsync,
 } from "expo-tracking-transparency";
 import { useAppInitialization } from "./AppInitializationContext";
-import { nativeAdPool } from "@/services/nativeAdPool";
-import { useAppSelector } from "@/store/hooks";
-import { selectIsProEnabled } from "@/store/slices/appPreferencesSlice";
+import { nativeAdPool } from "../services/nativeAdPool";
+import { useAppSelector } from "../store/hooks";
+import { selectIsProEnabled } from "../store/slices/appPreferencesSlice";
 
 // Persisted consent status — lets returning users show ads on the splash
 // screen instantly instead of waiting for the async consent flow to finish.

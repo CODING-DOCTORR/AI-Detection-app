@@ -353,7 +353,7 @@ const SlideView = ({ slide, onCta, currentIndex, total }: { slide: Slide; onCta:
           ))}
         </View>
         <TouchableOpacity onPress={onCta} activeOpacity={0.85} style={{ width: '100%', paddingVertical: verticalScale(16), borderRadius: scale(16), alignItems: 'center', backgroundColor: '#818cf8', marginBottom: verticalScale(16) }}>
-          <Text style={{ color: '#fff', fontSize: moderateScale(17), fontWeight: '600' }}>Continue</Text>
+          <Text style={{ color: '#fff', fontSize: moderateScale(17), fontWeight: '600' }}>Cont.inue</Text>
         </TouchableOpacity>
       </SafeAreaView>
     </View>

@@ -30,7 +30,7 @@ const AppTextInput: React.FC<AppTextInputProps> = ({
         <View className="mr-3 opacity-60">{icon}</View>
 
         <TextInput
-          className="flex-1 text-gray-800 text-[15px]"
+          className="flex-1 text-gray-200 text-[15px]"
           placeholder={placeholder}
           placeholderTextColor="#9CA3AF"
           value={value}

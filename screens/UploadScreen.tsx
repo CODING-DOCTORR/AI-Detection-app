@@ -6,17 +6,19 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Image,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
+import LottieView from 'lottie-react-native';
 import {
   PlusCircle,
   Video,
@@ -33,8 +35,12 @@ import {
   detectDeepfakeVideo,
 } from '../services/detectionService';
 import Header from '../components/Header';
-import AdComponent from '../components/AdComponent'; 
-import { useButtonInterstitialAd } from '../hooks/ads/useButtonInterstitialAd'; // 🆕 Ad hook
+import AdComponent from '../components/AdComponent';
+import AppModal from '../components/AppModal';
+import { useModal } from '../hooks/ui/useModal';
+import { useButtonInterstitialAd } from '../hooks/ads/useButtonInterstitialAd';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type MediaTab = 'Image' | 'Video' | 'Text' | 'Audio';
 
@@ -64,9 +70,39 @@ const TABS = [
   { key: 'Audio' as MediaTab, icon: Music },
 ];
 
+// 🆕 Analyzing messages that rotate
+const ANALYZING_MESSAGES: Record<MediaTab, string[]> = {
+  Image: [
+    'Scanning pixels for AI signatures...',
+    'Analyzing image patterns...',
+    'Detecting deepfake artifacts...',
+    'Almost done, finalizing results...',
+  ],
+  Video: [
+    'Extracting video frames...',
+    'Analyzing motion patterns...',
+    'Checking for deepfake indicators...',
+    'Processing audio-visual sync...',
+  ],
+  Text: [
+    'Analyzing writing patterns...',
+    'Checking linguistic markers...',
+    'Detecting AI-generated content...',
+    'Finalizing analysis...',
+  ],
+  Audio: [
+    'Analyzing audio waveforms...',
+    'Detecting voice patterns...',
+    'Checking for AI synthesis...',
+    'Almost complete...',
+  ],
+};
+
 export default function UploadScreen() {
   const navigation = useNavigation<any>();
-  const { handlePress: handleAdPress } = useButtonInterstitialAd('Home_Button_Count'); // 🆕 Ad hook
+  const { handlePress: handleAdPress } = useButtonInterstitialAd('Home_Button_Count');
+
+  const { modal, hideModal, showError, showWarning } = useModal();
 
   const [activeTab, setActiveTab] = useState<MediaTab>('Image');
   const [analyzing, setAnalyzing] = useState(false);
@@ -75,11 +111,27 @@ export default function UploadScreen() {
   const [videoMedia, setVideoMedia] = useState<PickedMedia | null>(null);
   const [audioMedia, setAudioMedia] = useState<PickedMedia | null>(null);
   const [textMedia, setTextMedia] = useState('');
+  
+  // 🆕 Rotating message for the fullscreen animation
+  const [messageIndex, setMessageIndex] = useState(0);
 
   const wordCount = textMedia.trim().split(/\s+/).filter((w) => w.length > 0).length;
   const charCount = textMedia.length;
   const isTextEmpty = charCount === 0;
   const isTextShort = wordCount > 0 && wordCount < 300;
+
+  // 🆕 Rotate messages every 2.5 seconds while analyzing
+  React.useEffect(() => {
+    if (!analyzing) {
+      setMessageIndex(0);
+      return;
+    }
+    const messages = ANALYZING_MESSAGES[activeTab];
+    const interval = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % messages.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [analyzing, activeTab]);
 
   const currentHasData = () => {
     if (activeTab === 'Image') return Boolean(imageMedia);
@@ -105,7 +157,7 @@ export default function UploadScreen() {
   const handlePickMedia = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow gallery access.');
+      showWarning('Permission required', 'Please allow gallery access to upload media.');
       return;
     }
 
@@ -129,7 +181,7 @@ export default function UploadScreen() {
       }
     } catch (err) {
       console.log('Pick media error:', err);
-      Alert.alert('Error', 'Could not pick media file.');
+      showError('Upload Failed', 'Could not pick media file. Please try again.');
     } finally {
       setPickingMedia(false);
     }
@@ -154,7 +206,7 @@ export default function UploadScreen() {
       }
     } catch (err) {
       console.log('Audio pick error:', err);
-      Alert.alert('Error', 'Could not pick audio file.');
+      showError('Upload Failed', 'Could not pick audio file. Please try again.');
     } finally {
       setPickingMedia(false);
     }
@@ -167,7 +219,6 @@ export default function UploadScreen() {
     if (activeTab === 'Text') setTextMedia('');
   }, [activeTab]);
 
-  // 🆕 Actual analyze logic (extracted)
   const performAnalysis = useCallback(async () => {
     setAnalyzing(true);
     try {
@@ -207,7 +258,10 @@ export default function UploadScreen() {
             p_fake_pct: 50,
             ai_generated_pct: 50,
             human_written_pct: 50,
-            note: 'Analysis performed on limited text (' + actualWords + ' words). Results may not be accurate. For reliable AI detection, please provide at least 300 words.',
+            note:
+              'Analysis performed on limited text (' +
+              actualWords +
+              ' words). Results may not be accurate. For reliable AI detection, please provide at least 300 words.',
             low_confidence: true,
           };
 
@@ -219,22 +273,19 @@ export default function UploadScreen() {
         }
       }
 
-      Alert.alert('Analysis Failed', e.message || 'Something went wrong');
+      showError('Analysis Failed', e.message || 'Something went wrong. Please try again.');
     } finally {
       setAnalyzing(false);
     }
-  }, [activeTab, imageMedia, videoMedia, audioMedia, textMedia, navigation, wordCount, handleClearMedia]);
+  }, [activeTab, imageMedia, videoMedia, audioMedia, textMedia, navigation, wordCount, handleClearMedia, showError]);
 
-  // 🆕 Wrapper — shows interstitial ad every Nth press, then runs analysis
   const handleAnalyze = useCallback(async () => {
     if (!currentHasData()) {
-      Alert.alert('Nothing to analyze', 'Please add content first.');
+      showWarning('Nothing to analyze', `Please add ${activeTab.toLowerCase()} content first.`);
       return;
     }
-    // handleAdPress will show interstitial every Nth click (with cooldown)
-    // then call the passed callback (performAnalysis)
     await handleAdPress(performAnalysis);
-  }, [currentHasData, handleAdPress, performAnalysis]);
+  }, [currentHasData, handleAdPress, performAnalysis, showWarning, activeTab]);
 
   const getPickerFn = () => (activeTab === 'Audio' ? handlePickAudio : handlePickMedia);
 
@@ -558,7 +609,7 @@ export default function UploadScreen() {
               )}
             </View>
 
-            {/* 🆕 BANNER AD (below input area) */}
+            {/* BANNER AD */}
             <AdComponent placement="upload_screen" />
 
             {/* SAFETY TIP */}
@@ -601,7 +652,7 @@ export default function UploadScreen() {
               </View>
             </View>
 
-            {/* ANALYZE BUTTON */}
+            {/* ANALYZE BUTTON — Simple (no Lottie here, fullscreen handles it) */}
             <TouchableOpacity
               onPress={handleAnalyze}
               activeOpacity={0.85}
@@ -618,22 +669,120 @@ export default function UploadScreen() {
                 opacity: isAnalyzeDisabled() ? 0.6 : 1,
               }}
             >
-              {analyzing ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <ActivityIndicator size="small" color="#fff" />
-                  <Text style={{ fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.3 }}>
-                    Analyzing...
-                  </Text>
-                </View>
-              ) : (
-                <Text style={{ fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.3 }}>
-                  Analyze {activeTab}
-                </Text>
-              )}
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.3 }}>
+                Analyze {activeTab}
+              </Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* MODAL */}
+      <AppModal
+        visible={modal.visible}
+        type={modal.type}
+        title={modal.title}
+        message={modal.message}
+        buttons={modal.buttons}
+        loading={modal.loading}
+        showCloseIcon={modal.showCloseIcon !== false}
+        onClose={hideModal}
+      />
+
+      {/* 🆕 FULLSCREEN LOTTIE ANIMATION OVERLAY */}
+      {/* FULLSCREEN LOTTIE ANIMATION OVERLAY */}
+<Modal visible={analyzing} transparent statusBarTranslucent animationType="fade">
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: 'rgba(13, 11, 20, 0.98)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 32,
+    }}
+  >
+    {/* 🆕 LOTTIE — Large, animated */}
+    <LottieView
+      source={require('../assets/lottie/analyzing.json')}
+      autoPlay={true}          // ⚠️ MUST BE TRUE
+      loop={true}              // ⚠️ MUST BE TRUE
+      speed={1}                // Normal speed (1x)
+      style={{
+        width: SCREEN_WIDTH * 0.7,
+        height: SCREEN_WIDTH * 0.7,
+        maxWidth: 300,
+        maxHeight: 300,
+      }}
+      resizeMode="contain"     // Keep aspect ratio
+    />
+
+    {/* Analyzing Title */}
+    <Text
+      style={{
+        color: THEME.textLight,
+        fontSize: 28,
+        fontWeight: '800',
+        marginTop: 24,
+        letterSpacing: 0.5,
+      }}
+    >
+      Analyzing {activeTab}
+    </Text>
+
+    {/* Rotating messages */}
+    <View style={{ marginTop: 12, height: 40, justifyContent: 'center' }}>
+      <Text
+        style={{
+          color: THEME.accent,
+          fontSize: 14,
+          fontWeight: '600',
+          textAlign: 'center',
+          letterSpacing: 0.3,
+        }}
+      >
+        {ANALYZING_MESSAGES[activeTab][messageIndex]}
+      </Text>
+    </View>
+
+    {/* Progress dots */}
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 32 }}>
+      {[0, 1, 2, 3].map((i) => (
+        <View
+          key={i}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: i === messageIndex ? THEME.accent : 'rgba(166,158,255,0.25)',
+          }}
+        />
+      ))}
+    </View>
+
+    {/* Footer */}
+    <View
+      style={{
+        position: 'absolute',
+        bottom: 60,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <View
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: '#22c55e',
+        }}
+      />
+      <Text style={{ color: THEME.textMuted, fontSize: 12, fontWeight: '500' }}>
+        Powered by advanced AI detection
+      </Text>
+    </View>
+  </View>
+</Modal>
     </View>
   );
 }

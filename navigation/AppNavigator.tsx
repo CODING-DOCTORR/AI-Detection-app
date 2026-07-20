@@ -1,3 +1,4 @@
+// navigation/AppNavigator.tsx
 import React, { useState, useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -8,6 +9,15 @@ import { auth } from '../config/firebase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
+// Settings-related screens
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import TermsOfServiceScreen from '../screens/TermsOfServiceScreen';
+import AboutScreen from '../screens/AboutScreen';
+import AppearanceScreen from '../screens/AppearanceScreen';
+import LanguageScreen from '../screens/LanguageScreen';
+import PrivacyPermissionsScreen from '../screens/PrivacyPermissionsScreen';
+
+// Main screens
 import { OnboardingScreen } from '../screens/Onboardingscreen';
 import UploadScreen from '../screens/UploadScreen';
 import HistoryScreen from '../screens/HistoryScreen';
@@ -20,7 +30,7 @@ import ProfileScreen from '../screens/Profilescreen';
 import ResultScreen from '../screens/ResultScreen';
 import ProAccessScreen from '../screens/ProAccessScreen';
 
-// 🆕 Ad hook for tab switching
+// Ad hook
 import { useBottomTabInterstitialAd } from '../hooks/ads/useBottomTabInterstitialAd';
 
 const Stack = createNativeStackNavigator();
@@ -29,7 +39,7 @@ const Tab = createBottomTabNavigator();
 // ─── Custom Floating TabBar ───────────────────────────────────────────────────
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { onTabSwitch } = useBottomTabInterstitialAd(); // 🆕 Interstitial ad hook
+  const { onTabSwitch } = useBottomTabInterstitialAd();
 
   return (
     <View
@@ -56,7 +66,6 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           const onPress = async () => {
             const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
             if (!isFocused && !event.defaultPrevented) {
-              // 🆕 Trigger interstitial (only shows every Nth switch, respects cooldown)
               await onTabSwitch();
               navigation.navigate(route.name as never);
             }
@@ -86,7 +95,12 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                   className="items-center justify-center rounded-full py-2.5 px-2"
                   style={{ borderRadius: 999, gap: 3 }}
                 >
-                  <Icon size={22} color="#FFFFFF" fill={route.name === 'HomeTab' ? '#FFFFFF' : 'transparent'} strokeWidth={route.name === 'HomeTab' ? 2.5 : 2} />
+                  <Icon
+                    size={22}
+                    color="#FFFFFF"
+                    fill={route.name === 'HomeTab' ? '#FFFFFF' : 'transparent'}
+                    strokeWidth={route.name === 'HomeTab' ? 2.5 : 2}
+                  />
                   <Text className="text-white text-[12px] font-bold tracking-wide">{label}</Text>
                 </LinearGradient>
               ) : (
@@ -106,10 +120,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 // ─── Bottom Tab Navigator ─────────────────────────────────────────────────────
 function MainTabNavigator() {
   return (
-    <Tab.Navigator
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
+    <Tab.Navigator tabBar={(props) => <CustomTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tab.Screen name="HomeTab" component={UploadScreen} options={{ title: 'Home' }} />
       <Tab.Screen name="HistoryTab" component={HistoryScreen} options={{ title: 'History' }} />
       <Tab.Screen name="SettingsTab" component={SettingsScreen} options={{ title: 'Settings' }} />
@@ -117,7 +128,7 @@ function MainTabNavigator() {
   );
 }
 
-// ─── Auth Stack ───────────────────────────────────────────────────────────────
+// ─── Auth Stack ─────────────────────────────────────────────────────────────────
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -147,27 +158,51 @@ function AuthStack() {
   );
 }
 
-// ─── App Stack ────────────────────────────────────────────────────────────────
+// ─── App Stack (for already-logged-in users) ────────────────────────────────────
+// 🆕 Initial route is "ProAccessGate" — a wrapper that shows ProAccess with fromSplash=true
 function AppStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="ProAccessGate" screenOptions={{ headerShown: false }}>
+      {/* 🆕 ProAccessGate — first screen shown after splash for logged-in users */}
+      <Stack.Screen
+        name="ProAccessGate"
+        component={ProAccessScreen}
+        initialParams={{ fromSplash: true }} // 🆕 Triggers 3-second delay
+      />
+
+      {/* Main app tabs (Home, History, Settings) */}
       <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+
+      {/* Regular ProAccess (accessible from other screens, X icon visible immediately) */}
       <Stack.Screen name="ProAccess" component={ProAccessScreen} />
+
       <Stack.Screen name="Result" component={ResultScreen} />
       <Stack.Screen name="Profile">
         {(props) => (
-          <ProfileScreen onBack={() => props.navigation.goBack()} onEditProfile={() => props.navigation.navigate('EditProfile')} />
+          <ProfileScreen
+            onBack={() => props.navigation.goBack()}
+            onEditProfile={() => props.navigation.navigate('EditProfile')}
+          />
         )}
       </Stack.Screen>
+
+      {/* Settings sub-screens */}
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+      <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="Appearance" component={AppearanceScreen} />
+      <Stack.Screen name="Language" component={LanguageScreen} />
+      <Stack.Screen name="PrivacyPermissions" component={PrivacyPermissionsScreen} />
     </Stack.Navigator>
   );
 }
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
+// ─── Root Navigator ───────────────────────────────────────────────────────────
 export default function AppNavigator() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
+  const [splashDone, setSplashDone] = useState(false); // 🆕 Track splash completion
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -185,16 +220,29 @@ export default function AppNavigator() {
     );
   }
 
-  if (!onboardingDone && !isLoggedIn) {
+  // 🆕 Show splash first (for BOTH logged-in and logged-out users on fresh app open)
+  if (!splashDone) {
     return (
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Splash">
-          {(props) => <SplashScreen onFinish={() => props.navigation.navigate('Onboarding')} />}
+          {() => <SplashScreen onFinish={() => setSplashDone(true)} />}
         </Stack.Screen>
-        <Stack.Screen name="Onboarding">{() => <OnboardingScreen onComplete={() => setOnboardingDone(true)} />}</Stack.Screen>
       </Stack.Navigator>
     );
   }
 
+  // Show onboarding once on first open (only if not logged in AND onboarding not done)
+  if (!onboardingDone && !isLoggedIn) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Onboarding">
+          {() => <OnboardingScreen onComplete={() => setOnboardingDone(true)} />}
+        </Stack.Screen>
+      </Stack.Navigator>
+    );
+  }
+
+  // Logged in → AppStack (which starts with ProAccessGate)
+  // Not logged in → AuthStack (Login/Register)
   return isLoggedIn ? <AppStack key="app" /> : <AuthStack key="auth" />;
 }

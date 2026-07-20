@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "150605444180",
+    "project_id": "deepfake-detector-3958e",
+    "storage_bucket": "deepfake-detector-3958e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:150605444180:android:19f3bbfae31388412129c1",
+        "android_client_info": {
+          "package_name": "com.daniyal_007s2.myexpoapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "150605444180-ed6ugg7chuin1ga8ckbreenicns8agu7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.daniyal_007s2.myexpoapp",
+            "certificate_hash": "ed1741ae0cd5b8a56a8a791899f14ddf638af055"
+          }
+        },
+        {
+          "client_id": "150605444180-2bpbqt1fl1lddu8nun3k8s6anrmp44oe.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNub7xdu_me5Jvuc8FfwzywEPZ9nulIFg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "150605444180-2bpbqt1fl1lddu8nun3k8s6anrmp44oe.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

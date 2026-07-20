@@ -175,7 +175,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </View>
 
               {/* Title */}
-              <AuthTitle text="Sign In" />
+              {/* <AuthTitle text="Sign In" /> */}
 
               <View style={{ height: 24 }} />
 

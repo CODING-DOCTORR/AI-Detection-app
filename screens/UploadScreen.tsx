@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
 import LottieView from 'lottie-react-native';
+import { addHistoryItem } from '../services/historyService';
 import {
   PlusCircle,
   Video,
@@ -28,11 +29,16 @@ import {
   FileText,
   ShieldAlert,
   AlertTriangle,
+  ShieldCheck,
+  Bot,
 } from 'lucide-react-native';
 import {
   detectText,
   detectDeepfakeImage,
   detectDeepfakeVideo,
+  detectAIImage,
+  detectAIVideo,
+  detectAIAudio,
 } from '../services/detectionService';
 import Header from '../components/Header';
 import AdComponent from '../components/AdComponent';
@@ -40,8 +46,14 @@ import AppModal from '../components/AppModal';
 import { useModal } from '../hooks/ui/useModal';
 import { useButtonInterstitialAd } from '../hooks/ads/useButtonInterstitialAd';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// 🆕 Main detection modes
+type DetectionMode = 'Deepfake' | 'AI';
+
+// 🆕 Sub-tabs per mode (removed Audio from Deepfake)
+type DeepfakeTab = 'Image' | 'Video';
+type AITab = 'Image' | 'Video' | 'Text' | 'Audio';
 type MediaTab = 'Image' | 'Video' | 'Text' | 'Audio';
 
 interface PickedMedia {
@@ -63,37 +75,63 @@ const THEME = {
   textMuted: '#9CA3AF',
 };
 
-const TABS = [
-  { key: 'Image' as MediaTab, icon: PlusCircle },
-  { key: 'Video' as MediaTab, icon: Video },
-  { key: 'Text' as MediaTab, icon: FileText },
-  { key: 'Audio' as MediaTab, icon: Music },
+// 🆕 Tabs config per mode
+const DEEPFAKE_TABS: { key: DeepfakeTab; icon: any }[] = [
+  { key: 'Image', icon: PlusCircle },
+  { key: 'Video', icon: Video },
 ];
 
-// 🆕 Analyzing messages that rotate
-const ANALYZING_MESSAGES: Record<MediaTab, string[]> = {
-  Image: [
-    'Scanning pixels for AI signatures...',
-    'Analyzing image patterns...',
-    'Detecting deepfake artifacts...',
-    'Almost done, finalizing results...',
+const AI_TABS: { key: AITab; icon: any }[] = [
+  { key: 'Image', icon: PlusCircle },
+  { key: 'Video', icon: Video },
+  { key: 'Text', icon: FileText },
+  { key: 'Audio', icon: Music },
+];
+
+// 🆕 Track which AI endpoints are ready (set to true when backend deploys them)
+const AI_ENDPOINT_STATUS = {
+  Image: true,   // ✅ Backend has /detect/image
+  Video: false,  // ❌ Backend doesn't have /detect/video yet
+  Text: true,    // ✅ Backend has /detect/text
+  Audio: false,  // ❌ Backend doesn't have /detect/audio yet
+};
+
+// Analyzing messages
+const ANALYZING_MESSAGES: Record<string, string[]> = {
+  'Deepfake-Image': [
+    'Scanning face manipulation signs...',
+    'Analyzing facial artifacts...',
+    'Detecting deepfake patterns...',
+    'Almost done, finalizing...',
   ],
-  Video: [
+  'Deepfake-Video': [
     'Extracting video frames...',
-    'Analyzing motion patterns...',
+    'Analyzing face movements...',
     'Checking for deepfake indicators...',
-    'Processing audio-visual sync...',
+    'Processing frame consistency...',
   ],
-  Text: [
+  'AI-Image': [
+    'Scanning pixels for AI signatures...',
+    'Analyzing generation patterns...',
+    'Detecting AI artifacts...',
+    'Almost done, finalizing...',
+  ],
+  'AI-Video': [
+    'Extracting video frames...',
+    'Analyzing AI generation markers...',
+    'Detecting synthetic content...',
+    'Processing temporal patterns...',
+  ],
+  'AI-Text': [
     'Analyzing writing patterns...',
     'Checking linguistic markers...',
     'Detecting AI-generated content...',
     'Finalizing analysis...',
   ],
-  Audio: [
+  'AI-Audio': [
     'Analyzing audio waveforms...',
-    'Detecting voice patterns...',
-    'Checking for AI synthesis...',
+    'Detecting synthetic voice...',
+    'Checking AI generation...',
     'Almost complete...',
   ],
 };
@@ -101,9 +139,9 @@ const ANALYZING_MESSAGES: Record<MediaTab, string[]> = {
 export default function UploadScreen() {
   const navigation = useNavigation<any>();
   const { handlePress: handleAdPress } = useButtonInterstitialAd('Home_Button_Count');
+  const { modal, hideModal, showError, showWarning, showInfo } = useModal();
 
-  const { modal, hideModal, showError, showWarning } = useModal();
-
+  const [detectionMode, setDetectionMode] = useState<DetectionMode>('Deepfake');
   const [activeTab, setActiveTab] = useState<MediaTab>('Image');
   const [analyzing, setAnalyzing] = useState(false);
   const [pickingMedia, setPickingMedia] = useState(false);
@@ -111,8 +149,6 @@ export default function UploadScreen() {
   const [videoMedia, setVideoMedia] = useState<PickedMedia | null>(null);
   const [audioMedia, setAudioMedia] = useState<PickedMedia | null>(null);
   const [textMedia, setTextMedia] = useState('');
-  
-  // 🆕 Rotating message for the fullscreen animation
   const [messageIndex, setMessageIndex] = useState(0);
 
   const wordCount = textMedia.trim().split(/\s+/).filter((w) => w.length > 0).length;
@@ -120,18 +156,38 @@ export default function UploadScreen() {
   const isTextEmpty = charCount === 0;
   const isTextShort = wordCount > 0 && wordCount < 300;
 
-  // 🆕 Rotate messages every 2.5 seconds while analyzing
+  const currentTabs = detectionMode === 'Deepfake' ? DEEPFAKE_TABS : AI_TABS;
+
+  const handleModeSwitch = useCallback((mode: DetectionMode) => {
+    setDetectionMode(mode);
+    setActiveTab('Image');
+    setImageMedia(null);
+    setVideoMedia(null);
+    setAudioMedia(null);
+    setTextMedia('');
+  }, []);
+
+  // 🆕 Check if the current tab is available for the selected mode
+  const isCurrentTabAvailable = () => {
+    if (detectionMode === 'Deepfake') return true; // All deepfake tabs work
+    if (detectionMode === 'AI') {
+      return AI_ENDPOINT_STATUS[activeTab as keyof typeof AI_ENDPOINT_STATUS] ?? true;
+    }
+    return true;
+  };
+
   React.useEffect(() => {
     if (!analyzing) {
       setMessageIndex(0);
       return;
     }
-    const messages = ANALYZING_MESSAGES[activeTab];
+    const messageKey = `${detectionMode}-${activeTab}`;
+    const messages = ANALYZING_MESSAGES[messageKey] || ANALYZING_MESSAGES['AI-Image'];
     const interval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % messages.length);
     }, 2500);
     return () => clearInterval(interval);
-  }, [analyzing, activeTab]);
+  }, [analyzing, activeTab, detectionMode]);
 
   const currentHasData = () => {
     if (activeTab === 'Image') return Boolean(imageMedia);
@@ -144,6 +200,7 @@ export default function UploadScreen() {
   const isAnalyzeDisabled = () => {
     if (analyzing) return true;
     if (activeTab === 'Text' && isTextEmpty) return true;
+    if (!isCurrentTabAvailable()) return true; // 🆕 Disable if endpoint not available
     return false;
   };
 
@@ -219,33 +276,72 @@ export default function UploadScreen() {
     if (activeTab === 'Text') setTextMedia('');
   }, [activeTab]);
 
-  const performAnalysis = useCallback(async () => {
+   const performAnalysis = useCallback(async () => {
     setAnalyzing(true);
     try {
       let result;
       let mediaUri;
+      let fileName;
 
-      if (activeTab === 'Text') {
-        result = await detectText(textMedia);
-      } else if (activeTab === 'Image' && imageMedia) {
-        mediaUri = imageMedia.uri;
-        result = await detectDeepfakeImage(imageMedia.uri, imageMedia.fileName);
-      } else if (activeTab === 'Video' && videoMedia) {
-        mediaUri = videoMedia.uri;
-        result = await detectDeepfakeVideo(videoMedia.uri, videoMedia.fileName);
-      } else if (activeTab === 'Audio' && audioMedia) {
-        mediaUri = audioMedia.uri;
-        result = await detectDeepfakeVideo(audioMedia.uri, audioMedia.fileName);
+      // ── DEEPFAKE MODE (only Image and Video) ──
+      if (detectionMode === 'Deepfake') {
+        if (activeTab === 'Image' && imageMedia) {
+          mediaUri = imageMedia.uri;
+          fileName = imageMedia.fileName;
+          result = await detectDeepfakeImage(imageMedia.uri, imageMedia.fileName);
+        } else if (activeTab === 'Video' && videoMedia) {
+          mediaUri = videoMedia.uri;
+          fileName = videoMedia.fileName;
+          result = await detectDeepfakeVideo(videoMedia.uri, videoMedia.fileName);
+        }
+      }
+      // ── AI MODE ──
+      else if (detectionMode === 'AI') {
+        if (activeTab === 'Text') {
+          result = await detectText(textMedia);
+        } else if (activeTab === 'Image' && imageMedia) {
+          mediaUri = imageMedia.uri;
+          fileName = imageMedia.fileName;
+          result = await detectAIImage(imageMedia.uri, imageMedia.fileName);
+        } else if (activeTab === 'Video' && videoMedia) {
+          mediaUri = videoMedia.uri;
+          fileName = videoMedia.fileName;
+          result = await detectAIVideo(videoMedia.uri, videoMedia.fileName);
+        } else if (activeTab === 'Audio' && audioMedia) {
+          mediaUri = audioMedia.uri;
+          fileName = audioMedia.fileName;
+          result = await detectAIAudio(audioMedia.uri, audioMedia.fileName);
+        }
+      }
+
+      // 🆕 SAVE TO HISTORY before navigating
+      if (result) {
+        try {
+          await addHistoryItem({
+            fileName,
+            mode: detectionMode,
+            type: activeTab,
+            result,
+            textPreview: activeTab === 'Text' ? textMedia : undefined,
+          });
+        } catch (histErr) {
+          console.log('Failed to save history:', histErr);
+        }
       }
 
       const parentNav = navigation.getParent();
       const nav = parentNav || navigation;
-      nav.navigate('Result', { result, mediaUri, type: activeTab });
+      nav.navigate('Result', {
+        result,
+        mediaUri,
+        type: activeTab,
+        mode: detectionMode,
+      });
       handleClearMedia();
     } catch (e: any) {
       console.log('Analyze Error:', e);
 
-      if (activeTab === 'Text') {
+      if (detectionMode === 'AI' && activeTab === 'Text') {
         const errorMsg = e.message || '';
         if (errorMsg.indexOf('300 words') !== -1 || errorMsg.indexOf('reliable result') !== -1) {
           const wordMatch = errorMsg.match(/got (\d+)/);
@@ -265,27 +361,72 @@ export default function UploadScreen() {
             low_confidence: true,
           };
 
+          // 🆕 SAVE FALLBACK TO HISTORY TOO
+          try {
+            await addHistoryItem({
+              mode: detectionMode,
+              type: activeTab,
+              result: fallbackResult,
+              textPreview: textMedia,
+            });
+          } catch (histErr) {
+            console.log('Failed to save fallback history:', histErr);
+          }
+
           const parentNav = navigation.getParent();
           const nav = parentNav || navigation;
-          nav.navigate('Result', { result: fallbackResult, type: activeTab });
+          nav.navigate('Result', {
+            result: fallbackResult,
+            type: activeTab,
+            mode: detectionMode,
+          });
           handleClearMedia();
           return;
         }
       }
 
-      showError('Analysis Failed', e.message || 'Something went wrong. Please try again.');
+      const errorMsg = e.message || '';
+      if (errorMsg.includes('Not Found') || errorMsg.includes('404')) {
+        showInfo(
+          'Coming Soon',
+          `AI ${activeTab} detection is currently being deployed. Please check back later.`
+        );
+      } else {
+        showError('Analysis Failed', errorMsg || 'Something went wrong. Please try again.');
+      }
     } finally {
       setAnalyzing(false);
     }
-  }, [activeTab, imageMedia, videoMedia, audioMedia, textMedia, navigation, wordCount, handleClearMedia, showError]);
+  }, [
+    detectionMode,
+    activeTab,
+    imageMedia,
+    videoMedia,
+    audioMedia,
+    textMedia,
+    navigation,
+    wordCount,
+    handleClearMedia,
+    showError,
+    showInfo,
+  ]);
 
   const handleAnalyze = useCallback(async () => {
+    // 🆕 Show info if endpoint not available yet
+    if (!isCurrentTabAvailable()) {
+      showInfo(
+        'Coming Soon',
+        `AI ${activeTab} detection is currently being deployed. Please try Deepfake detection instead.`
+      );
+      return;
+    }
+
     if (!currentHasData()) {
       showWarning('Nothing to analyze', `Please add ${activeTab.toLowerCase()} content first.`);
       return;
     }
     await handleAdPress(performAnalysis);
-  }, [currentHasData, handleAdPress, performAnalysis, showWarning, activeTab]);
+  }, [currentHasData, handleAdPress, performAnalysis, showWarning, showInfo, activeTab, isCurrentTabAvailable]);
 
   const getPickerFn = () => (activeTab === 'Audio' ? handlePickAudio : handlePickMedia);
 
@@ -330,19 +471,87 @@ export default function UploadScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* TABS */}
+            {/* MODE SWITCHER */}
+            <View
+              style={{
+                flexDirection: 'row',
+                marginHorizontal: 16,
+                marginTop: 12,
+                backgroundColor: THEME.card,
+                borderRadius: 999,
+                padding: 4,
+                borderWidth: 1,
+                borderColor: THEME.border,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => handleModeSwitch('Deepfake')}
+                activeOpacity={0.85}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 12,
+                  borderRadius: 999,
+                  backgroundColor: detectionMode === 'Deepfake' ? THEME.accent : 'transparent',
+                }}
+              >
+                <ShieldCheck size={18} color={detectionMode === 'Deepfake' ? '#fff' : THEME.textMuted} strokeWidth={detectionMode === 'Deepfake' ? 2.5 : 2} />
+                <Text style={{ color: detectionMode === 'Deepfake' ? '#fff' : THEME.textMuted, fontSize: 14, fontWeight: detectionMode === 'Deepfake' ? '700' : '600' }}>
+                  Deepfake
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleModeSwitch('AI')}
+                activeOpacity={0.85}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 12,
+                  borderRadius: 999,
+                  backgroundColor: detectionMode === 'AI' ? THEME.accent : 'transparent',
+                }}
+              >
+                <Bot size={18} color={detectionMode === 'AI' ? '#fff' : THEME.textMuted} strokeWidth={detectionMode === 'AI' ? 2.5 : 2} />
+                <Text style={{ color: detectionMode === 'AI' ? '#fff' : THEME.textMuted, fontSize: 14, fontWeight: detectionMode === 'AI' ? '700' : '600' }}>
+                  AI Detection
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* MODE DESCRIPTION */}
+            <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
+              <Text style={{ color: THEME.textMuted, fontSize: 12, textAlign: 'center' }}>
+                {detectionMode === 'Deepfake'
+                  ? 'Detect manipulated faces & videos'
+                  : 'Detect AI-generated content'}
+              </Text>
+            </View>
+
+            {/* SUB-TABS */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}
             >
-              {TABS.map((tab) => {
+              {currentTabs.map((tab) => {
                 const Icon = tab.icon;
                 const active = activeTab === tab.key;
+                // 🆕 Check if this specific tab endpoint is ready
+                const isAvailable =
+                  detectionMode === 'Deepfake' ||
+                  AI_ENDPOINT_STATUS[tab.key as keyof typeof AI_ENDPOINT_STATUS] !== false;
+
                 return (
                   <TouchableOpacity
                     key={tab.key}
-                    onPress={() => setActiveTab(tab.key)}
+                    onPress={() => setActiveTab(tab.key as MediaTab)}
                     activeOpacity={0.85}
                     style={{
                       flexDirection: 'row',
@@ -351,21 +560,32 @@ export default function UploadScreen() {
                       paddingHorizontal: 18,
                       paddingVertical: 10,
                       borderRadius: 999,
-                      backgroundColor: active ? THEME.accent : THEME.card,
+                      backgroundColor: active ? THEME.accentSoft : THEME.card,
                       borderWidth: 1,
-                      borderColor: active ? THEME.accent : THEME.border,
+                      borderColor: active ? THEME.accentSoft : THEME.border,
+                      opacity: isAvailable ? 1 : 0.5,
                     }}
                   >
                     <Icon size={16} color={active ? '#fff' : THEME.textMuted} strokeWidth={active ? 2.5 : 2} />
-                    <Text
-                      style={{
-                        color: active ? '#fff' : THEME.textMuted,
-                        fontSize: 14,
-                        fontWeight: active ? '700' : '600',
-                      }}
-                    >
+                    <Text style={{ color: active ? '#fff' : THEME.textMuted, fontSize: 14, fontWeight: active ? '700' : '600' }}>
                       {tab.key}
                     </Text>
+                    {/* 🆕 "Soon" badge for unavailable endpoints */}
+                    {!isAvailable && (
+                      <View
+                        style={{
+                          backgroundColor: 'rgba(251,191,36,0.2)',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 4,
+                          marginLeft: 4,
+                        }}
+                      >
+                        <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>
+                          SOON
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -401,10 +621,7 @@ export default function UploadScreen() {
                       <Text style={{ color: THEME.textLight, fontSize: 15, fontWeight: '600' }}>Enter your text</Text>
                     </View>
                     {textMedia.length > 0 && (
-                      <TouchableOpacity
-                        onPress={() => setTextMedia('')}
-                        style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 999, padding: 6 }}
-                      >
+                      <TouchableOpacity onPress={() => setTextMedia('')} style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 999, padding: 6 }}>
                         <X size={14} color="#fff" />
                       </TouchableOpacity>
                     )}
@@ -436,19 +653,7 @@ export default function UploadScreen() {
                   </ScrollView>
 
                   {isTextShort && (
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        backgroundColor: 'rgba(251,191,36,0.1)',
-                        borderWidth: 1,
-                        borderColor: 'rgba(251,191,36,0.3)',
-                        padding: 10,
-                        borderRadius: 12,
-                        marginTop: 12,
-                      }}
-                    >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(251,191,36,0.1)', borderWidth: 1, borderColor: 'rgba(251,191,36,0.3)', padding: 10, borderRadius: 12, marginTop: 12 }}>
                       <AlertTriangle size={16} color="#fbbf24" strokeWidth={2} />
                       <Text style={{ flex: 1, color: '#fbbf24', fontSize: 12, fontWeight: '500' }}>
                         Results may not be accurate for text under 300 words.
@@ -457,13 +662,7 @@ export default function UploadScreen() {
                   )}
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
-                    <Text
-                      style={{
-                        color: wordCount >= 300 ? '#22c55e' : wordCount > 0 ? '#fbbf24' : THEME.textMuted,
-                        fontSize: 12,
-                        fontWeight: '600',
-                      }}
-                    >
+                    <Text style={{ color: wordCount >= 300 ? '#22c55e' : wordCount > 0 ? '#fbbf24' : THEME.textMuted, fontSize: 12, fontWeight: '600' }}>
                       Words: {wordCount} / 300+ {wordCount >= 300 ? '✓' : ''}
                     </Text>
                     <Text style={{ color: THEME.textMuted, fontSize: 12 }}>Chars: {charCount}</Text>
@@ -493,7 +692,6 @@ export default function UploadScreen() {
                       <Text style={{ color: THEME.textLight, fontSize: 16, fontWeight: '600', marginTop: 16 }}>
                         Loading {activeTab.toLowerCase()}...
                       </Text>
-                      <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>Please wait</Text>
                     </View>
                   ) : currentMedia ? (
                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -504,100 +702,36 @@ export default function UploadScreen() {
                           resizeMode="cover"
                         />
                       ) : (
-                        <View
-                          style={{
-                            flex: 1,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: THEME.card2,
-                            borderRadius: 22,
-                            paddingHorizontal: 20,
-                          }}
-                        >
-                          <View
-                            style={{
-                              position: 'absolute',
-                              top: 20,
-                              right: 20,
-                              width: 44,
-                              height: 44,
-                              borderRadius: 999,
-                              backgroundColor: THEME.accent,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: THEME.card2, borderRadius: 22, paddingHorizontal: 20 }}>
+                          <View style={{ position: 'absolute', top: 20, right: 20, width: 44, height: 44, borderRadius: 999, backgroundColor: THEME.accent, alignItems: 'center', justifyContent: 'center' }}>
                             <Play size={22} color="#fff" fill="#fff" />
                           </View>
-                          <View
-                            style={{
-                              backgroundColor: 'rgba(79,70,229,0.2)',
-                              padding: 22,
-                              borderRadius: 999,
-                              marginBottom: 12,
-                            }}
-                          >
+                          <View style={{ backgroundColor: 'rgba(79,70,229,0.2)', padding: 22, borderRadius: 999, marginBottom: 12 }}>
                             {renderPreviewIcon()}
                           </View>
                           <Text style={{ color: THEME.textLight, fontSize: 16, fontWeight: '700', marginBottom: 6 }}>
                             {activeTab === 'Video' ? 'Video Selected' : 'Audio Selected'}
                           </Text>
-                          <Text
-                            style={{ color: THEME.textMuted, fontSize: 12, maxWidth: '90%' }}
-                            numberOfLines={1}
-                          >
+                          <Text style={{ color: THEME.textMuted, fontSize: 12, maxWidth: '90%' }} numberOfLines={1}>
                             {currentMedia.fileName || activeTab.toLowerCase() + ' file'}
                           </Text>
                         </View>
                       )}
                       <TouchableOpacity
                         onPress={handleClearMedia}
-                        style={{
-                          position: 'absolute',
-                          top: 12,
-                          right: 12,
-                          zIndex: 10,
-                          backgroundColor: 'rgba(0,0,0,0.65)',
-                          borderRadius: 999,
-                          padding: 6,
-                          borderWidth: 1,
-                          borderColor: 'rgba(255,255,255,0.15)',
-                        }}
+                        style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 999, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}
                       >
                         <X size={16} color="#fff" />
                       </TouchableOpacity>
                     </View>
                   ) : (
                     <View style={{ alignItems: 'center' }}>
-                      <View
-                        style={{
-                          backgroundColor: 'rgba(79,70,229,0.2)',
-                          padding: 8,
-                          borderRadius: 999,
-                          marginBottom: 20,
-                        }}
-                      >
-                        <View
-                          style={{
-                            backgroundColor: THEME.card2,
-                            padding: 18,
-                            borderRadius: 999,
-                            borderWidth: 1,
-                            borderColor: THEME.border,
-                          }}
-                        >
+                      <View style={{ backgroundColor: 'rgba(79,70,229,0.2)', padding: 8, borderRadius: 999, marginBottom: 20 }}>
+                        <View style={{ backgroundColor: THEME.card2, padding: 18, borderRadius: 999, borderWidth: 1, borderColor: THEME.border }}>
                           {renderEmptyIcon()}
                         </View>
                       </View>
-                      <Text
-                        style={{
-                          color: THEME.textLight,
-                          fontSize: 18,
-                          fontWeight: '700',
-                          textAlign: 'center',
-                          marginBottom: 8,
-                        }}
-                      >
+                      <Text style={{ color: THEME.textLight, fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
                         {getUploadTitle()}
                       </Text>
                       <Text style={{ color: THEME.textMuted, fontSize: 13, textAlign: 'center' }}>
@@ -613,30 +747,8 @@ export default function UploadScreen() {
             <AdComponent placement="upload_screen" />
 
             {/* SAFETY TIP */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 14,
-                padding: 16,
-                marginHorizontal: 16,
-                marginBottom: 24,
-                borderRadius: 18,
-                backgroundColor: THEME.card,
-                borderWidth: 1,
-                borderColor: THEME.border,
-              }}
-            >
-              <View
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(79,70,229,0.18)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14, padding: 16, marginHorizontal: 16, marginBottom: 24, borderRadius: 18, backgroundColor: THEME.card, borderWidth: 1, borderColor: THEME.border }}>
+              <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(79,70,229,0.18)', alignItems: 'center', justifyContent: 'center' }}>
                 <ShieldAlert size={22} color={THEME.accent} strokeWidth={2} />
               </View>
               <View style={{ flex: 1 }}>
@@ -652,7 +764,7 @@ export default function UploadScreen() {
               </View>
             </View>
 
-            {/* ANALYZE BUTTON — Simple (no Lottie here, fullscreen handles it) */}
+            {/* ANALYZE BUTTON */}
             <TouchableOpacity
               onPress={handleAnalyze}
               activeOpacity={0.85}
@@ -670,7 +782,7 @@ export default function UploadScreen() {
               }}
             >
               <Text style={{ fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.3 }}>
-                Analyze {activeTab}
+                {!isCurrentTabAvailable() ? 'Coming Soon' : `Analyze ${detectionMode} ${activeTab}`}
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -689,100 +801,50 @@ export default function UploadScreen() {
         onClose={hideModal}
       />
 
-      {/* 🆕 FULLSCREEN LOTTIE ANIMATION OVERLAY */}
       {/* FULLSCREEN LOTTIE ANIMATION OVERLAY */}
-<Modal visible={analyzing} transparent statusBarTranslucent animationType="fade">
-  <View
-    style={{
-      flex: 1,
-      backgroundColor: 'rgba(13, 11, 20, 0.98)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 32,
-    }}
-  >
-    {/* 🆕 LOTTIE — Large, animated */}
-    <LottieView
-      source={require('../assets/lottie/analyzing.json')}
-      autoPlay={true}          // ⚠️ MUST BE TRUE
-      loop={true}              // ⚠️ MUST BE TRUE
-      speed={1}                // Normal speed (1x)
-      style={{
-        width: SCREEN_WIDTH * 0.7,
-        height: SCREEN_WIDTH * 0.7,
-        maxWidth: 300,
-        maxHeight: 300,
-      }}
-      resizeMode="contain"     // Keep aspect ratio
-    />
+      <Modal visible={analyzing} transparent statusBarTranslucent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(13, 11, 20, 0.98)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+          <LottieView
+            source={require('../assets/lottie/analyzing.json')}
+            autoPlay
+            loop
+            speed={1}
+            style={{ width: SCREEN_WIDTH * 0.7, height: SCREEN_WIDTH * 0.7, maxWidth: 300, maxHeight: 300 }}
+            resizeMode="contain"
+          />
 
-    {/* Analyzing Title */}
-    <Text
-      style={{
-        color: THEME.textLight,
-        fontSize: 28,
-        fontWeight: '800',
-        marginTop: 24,
-        letterSpacing: 0.5,
-      }}
-    >
-      Analyzing {activeTab}
-    </Text>
+          <Text style={{ color: THEME.textLight, fontSize: 28, fontWeight: '800', marginTop: 24, letterSpacing: 0.5 }}>
+            Analyzing {detectionMode}
+          </Text>
 
-    {/* Rotating messages */}
-    <View style={{ marginTop: 12, height: 40, justifyContent: 'center' }}>
-      <Text
-        style={{
-          color: THEME.accent,
-          fontSize: 14,
-          fontWeight: '600',
-          textAlign: 'center',
-          letterSpacing: 0.3,
-        }}
-      >
-        {ANALYZING_MESSAGES[activeTab][messageIndex]}
-      </Text>
-    </View>
+          <View style={{ marginTop: 12, height: 40, justifyContent: 'center' }}>
+            <Text style={{ color: THEME.accent, fontSize: 14, fontWeight: '600', textAlign: 'center', letterSpacing: 0.3 }}>
+              {(ANALYZING_MESSAGES[`${detectionMode}-${activeTab}`] || ANALYZING_MESSAGES['AI-Image'])[messageIndex]}
+            </Text>
+          </View>
 
-    {/* Progress dots */}
-    <View style={{ flexDirection: 'row', gap: 8, marginTop: 32 }}>
-      {[0, 1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: i === messageIndex ? THEME.accent : 'rgba(166,158,255,0.25)',
-          }}
-        />
-      ))}
-    </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 32 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <View
+                key={i}
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: i === messageIndex ? THEME.accent : 'rgba(166,158,255,0.25)',
+                }}
+              />
+            ))}
+          </View>
 
-    {/* Footer */}
-    <View
-      style={{
-        position: 'absolute',
-        bottom: 60,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-      }}
-    >
-      <View
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 3,
-          backgroundColor: '#22c55e',
-        }}
-      />
-      <Text style={{ color: THEME.textMuted, fontSize: 12, fontWeight: '500' }}>
-        Powered by advanced AI detection
-      </Text>
-    </View>
-  </View>
-</Modal>
+          <View style={{ position: 'absolute', bottom: 60, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' }} />
+            <Text style={{ color: THEME.textMuted, fontSize: 12, fontWeight: '500' }}>
+              Powered by advanced AI detection
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

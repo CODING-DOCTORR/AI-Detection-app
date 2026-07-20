@@ -81,6 +81,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.daniyal_007s2.myexpoapp",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "com.google.android.gms.permission.AD_ID"
       ]

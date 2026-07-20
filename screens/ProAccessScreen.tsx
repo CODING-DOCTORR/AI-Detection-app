@@ -1,11 +1,12 @@
 // screens/ProAccessScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   StatusBar,
+  Animated,
 } from 'react-native';
 import {
   X,
@@ -18,17 +19,60 @@ import {
   CheckCircle2,
   Circle,
 } from 'lucide-react-native';
+import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 
 const FEATURES = [
   { label: 'AI Image Detection', icon: ImageIcon },
   { label: 'AI Text Detect & Humanizer', icon: FileText },
   { label: 'AI Video Detection', icon: Video },
   { label: 'AI Voice Detection', icon: Mic },
-  { label: 'Play Unlimited AI Game', icon: Gamepad2 },
+  // { label: 'Play Unlimited AI Game', icon: Gamepad2 },
 ];
 
-export default function ProAccessScreen({ navigation }: any) {
+export default function ProAccessScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  // 🆕 Check if this screen was opened from Splash (initial launch)
+  // If true, X button will be hidden for 3 seconds, then navigate to MainTabs
+  // If false (normal navigation), X button is immediately visible and goes back
+  const fromSplash = route.params?.fromSplash === true;
+
   const [selectedPlan, setSelectedPlan] = useState<'yearly' | 'weekly'>('yearly');
+  const [showCloseIcon, setShowCloseIcon] = useState(!fromSplash); // 🆕 Hidden if from splash
+  const fadeAnim = useState(new Animated.Value(fromSplash ? 0 : 1))[0]; // 🆕 Fade animation
+
+  // 🆕 Show X button after 3 seconds when opened from splash
+  useEffect(() => {
+    if (fromSplash) {
+      const timer = setTimeout(() => {
+        setShowCloseIcon(true);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }).start();
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [fromSplash, fadeAnim]);
+
+  // 🆕 Handle close button press
+  const handleClose = () => {
+    if (fromSplash) {
+      // Coming from Splash — go to MainTabs and reset stack
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        })
+      );
+    } else {
+      // Normal navigation — just go back
+      navigation.goBack();
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0D0B14' }}>
@@ -44,17 +88,29 @@ export default function ProAccessScreen({ navigation }: any) {
           paddingBottom: 16,
         }}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
-          <X size={24} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity>
+        {/* 🆕 Animated Close Icon — hidden for 3s if from splash */}
+        <Animated.View className={"pt-3"} style={{ opacity: fadeAnim }}>
+          <TouchableOpacity
+            onPress={handleClose}
+            style={{
+              padding: 8,
+              // 🆕 Disable touches while hidden
+              pointerEvents: showCloseIcon ? 'auto' : 'none',
+            }}
+            disabled={!showCloseIcon}
+          >
+            <X size={24} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* <TouchableOpacity>
           <Text style={{ color: '#9CA3AF', fontWeight: '600', fontSize: 16 }}>Restore</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
         {/* Logo/Brain Section */}
-        <View style={{ alignItems: 'center', marginTop: 16, marginBottom: 24 }}>
+        <View style={{ alignItems: 'center', marginBottom: 24 }}>
           <View
             style={{
               width: 96,
@@ -139,7 +195,6 @@ export default function ProAccessScreen({ navigation }: any) {
               backgroundColor: selectedPlan === 'yearly' ? '#1E1B2E' : '#1A1826',
             }}
           >
-            {/* Save Badge */}
             <View
               style={{
                 position: 'absolute',

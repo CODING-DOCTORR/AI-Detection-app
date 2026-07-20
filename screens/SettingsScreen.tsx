@@ -9,8 +9,8 @@ import { useNavigation } from '@react-navigation/native';
 import ProfileCard from '../components/settings/ProfileCard';
 import SettingsSection from '../components/settings/SettingsSection';
 import AppVersionFooter from '../components/settings/AppVersionFooter';
-import AppModal from '../components/AppModal';                    // 🆕 Modal component
-import { useModal } from '../hooks/ui/useModal';                  // 🆕 Modal hook
+import AppModal from '../components/AppModal';
+import { useModal } from '../hooks/ui/useModal';
 import { getSettingsSections } from '../config/settingsConfig';
 import { UserProfile } from '../types/settings.types';
 import { auth } from '../config/firebase';
@@ -23,7 +23,6 @@ const SettingsScreen: React.FC = () => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
   const navigation = useNavigation<any>();
 
-  // 🆕 Modal hook
   const { modal, hideModal, showInfo, showError, showConfirm } = useModal();
 
   useEffect(() => {
@@ -39,13 +38,20 @@ const SettingsScreen: React.FC = () => {
     avatarUri: firebaseUser?.photoURL || undefined,
   };
 
-  // 🆕 Replaced Alert with beautiful themed modal
+  const navigateTo = useCallback(
+    (screen: string) => () => {
+      const parentNav = navigation.getParent();
+      const nav = parentNav || navigation;
+      nav.navigate(screen);
+    },
+    [navigation]
+  );
+
   const stub = useCallback(
     (label: string) => () => showInfo(label, 'This feature is coming soon!'),
     [showInfo]
   );
 
-  // 🆕 Navigate to Profile screen when profile card is clicked
   const handleProfilePress = useCallback(() => {
     const parentNav = navigation.getParent();
     if (parentNav) {
@@ -55,38 +61,42 @@ const SettingsScreen: React.FC = () => {
     }
   }, [navigation]);
 
-  // 🆕 Log out with themed confirmation modal
-  const handleLogOut = useCallback(() => {
-    showConfirm(
-      'Log Out',
-      'Are you sure you want to log out?',
-      async () => {
+  // 🆕 Log out and navigate to Login screen
+ // Log out — Firebase auth listener will auto-switch to Login screen
+const handleLogOut = useCallback(() => {
+  showConfirm(
+    'Log Out',
+    'Are you sure you want to log out?',
+    async () => {
+      try {
+        // Sign out from Google (if signed in with Google)
         try {
-          try {
-            await GoogleSignin.signOut();
-          } catch {
-            // Silently ignore Google sign-out errors
-          }
-          await logoutUser();
-        } catch (error: any) {
-          showError('Log Out Failed', error.message || 'Could not log out. Please try again.');
+          await GoogleSignin.signOut();
+        } catch {
+          // Silently ignore
         }
-      },
-      undefined,
-      'Log Out',   // custom confirm button text
-      'Cancel'     // custom cancel button text
-    );
-  }, [showConfirm, showError]);
+
+        // Sign out from Firebase — AppNavigator will auto-switch to Login
+        await logoutUser();
+      } catch (error: any) {
+        showError('Log Out Failed', error.message || 'Could not log out. Please try again.');
+      }
+    },
+    undefined,
+    'Log Out',
+    'Cancel'
+  );
+}, [showConfirm, showError]);
 
   const sections = getSettingsSections({
-    onProfileInfo: stub('Profile Information'),
+    onProfileInfo: handleProfilePress,
     on2FA: stub('Two-Factor Authentication'),
-    onPrivacy: stub('Privacy & Permissions'),
+    onPrivacy: navigateTo('PrivacyPermissions'),
     onNotifications: stub('Notifications'),
-    onAppearance: stub('Appearance'),
-    onLanguage: stub('Language'),
-    onAbout: stub('About Deepfake Analysis'),
-    onTerms: stub('Terms of Service'),
+    onAppearance: navigateTo('Appearance'),
+    onLanguage: navigateTo('Language'),
+    onAbout: navigateTo('About'),
+    onTerms: navigateTo('TermsOfService'),
   });
 
   return (
@@ -99,17 +109,29 @@ const SettingsScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        {/* Profile card — navigates to Profile screen on tap */}
         <ProfileCard profile={profile} onPress={handleProfilePress} />
 
         <View className="h-4" />
 
-        {/* Dynamic sections */}
         {sections.map((section) => (
           <SettingsSection key={section.id} section={section} />
         ))}
 
-        {/* Auth Button */}
+        <TouchableOpacity
+          onPress={navigateTo('PrivacyPolicy')}
+          activeOpacity={0.7}
+          style={{
+            marginHorizontal: 16,
+            marginBottom: 8,
+            padding: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#818cf8', fontSize: 13, fontWeight: '600' }}>
+            View Privacy Policy
+          </Text>
+        </TouchableOpacity>
+
         {firebaseUser ? (
           <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.8} onPress={handleLogOut}>
             <LogOut size={20} color="#fff" strokeWidth={2} />
@@ -129,7 +151,6 @@ const SettingsScreen: React.FC = () => {
         <AppVersionFooter version={APP_VERSION} engineName={ENGINE_NAME} />
       </ScrollView>
 
-      {/* 🆕 GLOBAL MODAL — Renders on top of everything */}
       <AppModal
         visible={modal.visible}
         type={modal.type}

@@ -1,3 +1,4 @@
+// screens/Profilescreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -5,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Alert,
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
@@ -15,18 +15,19 @@ import {
   Pencil,
   BadgeCheck,
   Calendar,
-  Shield,
   HelpCircle,
   LogOut,
   LogIn,
   ChevronRight,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { auth } from '../config/firebase';
 import { logoutUser } from '../config/authService';
+import AppModal from '../components/AppModal';
+import { useModal } from '../hooks/ui/useModal';
 
 interface ProfileScreenProps {
   onBack?: () => void;
@@ -109,6 +110,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [signingOut, setSigningOut] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
 
+  // 🆕 Modal hook
+  const { modal, hideModal, showError, showConfirm } = useModal();
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => setFirebaseUser(user));
     return unsubscribe;
@@ -127,29 +131,40 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     avatarUrl: firebaseUser?.photoURL || null,
   };
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out', style: 'destructive',
-        onPress: async () => {
-          setSigningOut(true);
-          try {
-            try { await GoogleSignin.signOut(); } catch {}
-            await logoutUser();
-          } catch (error: any) {
-            Alert.alert('Error', error.message || 'Could not sign out.');
-          } finally { setSigningOut(false); }
-        },
-      },
-    ]);
-  };
+  // 🆕 Log out with themed modal + navigate to Login
+ // Log out — Firebase auth listener will auto-switch to Login screen
+const handleSignOut = () => {
+  showConfirm(
+    'Sign Out',
+    'Are you sure you want to sign out?',
+    async () => {
+      setSigningOut(true);
+      try {
+        // Sign out from Google (if signed in with Google)
+        try {
+          await GoogleSignin.signOut();
+        } catch {
+          // Silently ignore
+        }
+
+        // Sign out from Firebase — AppNavigator will auto-switch to Login
+        await logoutUser();
+      } catch (error: any) {
+        showError('Sign Out Failed', error.message || 'Could not sign out. Please try again.');
+      } finally {
+        setSigningOut(false);
+      }
+    },
+    undefined,
+    'Sign Out',
+    'Cancel'
+  );
+};
 
   return (
     <View className="flex-1 bg-app-bg">
       <StatusBar barStyle="light-content" backgroundColor="#0D0B14" />
       <SafeAreaView className="flex-1 bg-app-bg" edges={['top']}>
-
         {/* Top Bar */}
         <View className="flex-row items-center justify-between px-4 py-3 bg-app-bg">
           <TouchableOpacity className="w-9 h-9 items-center justify-center" activeOpacity={0.7} onPress={onBack}>
@@ -166,7 +181,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
         </View>
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-
           {/* Avatar + Name */}
           <View className="items-center pt-2 pb-6">
             <View className="relative mb-3">
@@ -180,7 +194,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 </View>
               )}
               {isLoggedIn && (
-                <TouchableOpacity className="absolute bottom-1 right-1 w-[30px] h-[30px] rounded-full bg-app-accentSoft items-center justify-center border-2 border-app-bg" activeOpacity={0.8} onPress={onEditProfile}>
+                <TouchableOpacity
+                  className="absolute bottom-1 right-1 w-[30px] h-[30px] rounded-full bg-app-accentSoft items-center justify-center border-2 border-app-bg"
+                  activeOpacity={0.8}
+                  onPress={onEditProfile}
+                >
                   <Pencil size={14} color="#FFFFFF" strokeWidth={2} />
                 </TouchableOpacity>
               )}
@@ -191,7 +209,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
           {isLoggedIn && (
             <>
-              <Text className="text-[11px] font-bold text-app-muted tracking-widest mb-2 mt-1">ACCOUNT INFORMATION</Text>
+              <Text className="text-[11px] font-bold text-app-muted tracking-widest mb-2 mt-1">
+                ACCOUNT INFORMATION
+              </Text>
               <View className="bg-app-card rounded-2xl mb-5 overflow-hidden border border-app-border">
                 <InfoRow
                   icon={<BadgeCheck size={18} color="#2dd4bf" strokeWidth={1.8} />}
@@ -212,10 +232,16 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </>
           )}
 
-          <Text className="text-[11px] font-bold text-app-muted tracking-widest mb-2 mt-1">SECURITY & PRIVACY</Text>
+          <Text className="text-[11px] font-bold text-app-muted tracking-widest mb-2 mt-1">
+            SECURITY & PRIVACY
+          </Text>
           <View className="bg-app-card rounded-2xl mb-5 overflow-hidden border border-app-border">
-            {/* <SectionRow icon={<Shield size={18} color="#9CA3AF" strokeWidth={1.8} />} label="Privacy Settings" onPress={onPrivacySettings} /> */}
-            <SectionRow icon={<HelpCircle size={18} color="#9CA3AF" strokeWidth={1.8} />} label="Security Audit Logs" onPress={onSecurityAuditLogs} showDivider={false} />
+            <SectionRow
+              icon={<HelpCircle size={18} color="#9CA3AF" strokeWidth={1.8} />}
+              label="Security Audit Logs"
+              onPress={onSecurityAuditLogs}
+              showDivider={false}
+            />
           </View>
 
           {isLoggedIn ? (
@@ -225,7 +251,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
               onPress={handleSignOut}
               disabled={signingOut}
             >
-              {signingOut ? <ActivityIndicator size="small" color="#f87171" /> : (
+              {signingOut ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
                 <>
                   <LogOut size={18} color="#fff" strokeWidth={2} />
                   <Text className="text-white text-[16px] font-bold">Sign Out</Text>
@@ -243,9 +271,23 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </TouchableOpacity>
           )}
 
-          <Text className="text-center text-xs text-app-muted mt-1">Deepfake Detector {user.appVersion}</Text>
+          <Text className="text-center text-xs text-app-muted mt-1">
+            Deepfake Detector {user.appVersion}
+          </Text>
         </ScrollView>
       </SafeAreaView>
+
+      {/* 🆕 GLOBAL MODAL */}
+      <AppModal
+        visible={modal.visible}
+        type={modal.type}
+        title={modal.title}
+        message={modal.message}
+        buttons={modal.buttons}
+        loading={modal.loading}
+        showCloseIcon={modal.showCloseIcon !== false}
+        onClose={hideModal}
+      />
     </View>
   );
 };

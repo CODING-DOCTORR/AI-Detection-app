@@ -23,6 +23,18 @@ const BannerAdComponent: React.FC<BannerAdComponentProps> = ({
         unitId={BannerAdId}
         size={size}
         requestOptions={{ requestNonPersonalizedAdsOnly: false }}
+        onAdLoaded={() => {
+          console.log('✅ Banner ad LOADED successfully. Unit ID:', BannerAdId);
+        }}
+        onAdFailedToLoad={(error: any) => {
+          console.log('❌ Banner ad FAILED to load. Unit ID:', BannerAdId);
+          console.log('❌ Error code:', error?.code);
+          console.log('❌ Error message:', error?.message);
+          console.log('❌ Full error:', JSON.stringify(error));
+        }}
+        onAdOpened={() => {
+          console.log('Banner ad opened');
+        }}
       />
     </View>
   );

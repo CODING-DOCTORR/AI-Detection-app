@@ -25,11 +25,11 @@ const TEST_IDS = {
 
 const PROD_IDS = {
     android: {
-        banner: 'YOUR_ANDROID_BANNER_AD_UNIT_ID',       // TODO: replace with real AdMob ad unit ID
-        interstitial: 'YOUR_ANDROID_INTERSTITIAL_AD_UNIT_ID', // TODO: replace with real AdMob ad unit ID
-        native: 'YOUR_ANDROID_NATIVE_AD_UNIT_ID',       // TODO: replace with real AdMob ad unit ID
-        appOpen: 'YOUR_ANDROID_APP_OPEN_AD_UNIT_ID',     // TODO: replace with real AdMob ad unit ID
-        rewarded: 'YOUR_ANDROID_REWARDED_AD_UNIT_ID',     // TODO: replace with real AdMob ad unit ID
+        banner: 'ca-app-pub-9627645539354255/5604969448',
+        interstitial: 'ca-app-pub-9627645539354255/2691745508',
+        native: 'ca-app-pub-9627645539354255/6620482301',
+        appOpen: 'ca-app-pub-9627645539354255/3282058431',
+        rewarded: 'ca-app-pub-9627645539354255/6918051118',
     },
     ios: {
         banner: 'YOUR_IOS_BANNER_AD_UNIT_ID',           // TODO: replace with real AdMob ad unit ID
@@ -44,7 +44,7 @@ const PROD_IDS = {
 
 const ids = (() => {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-    return __DEV__ ? TEST_IDS[platform] : PROD_IDS[platform];
+    return PROD_IDS[platform]; // TEMP: testing real ads in dev mode
 })();
 
 export const BannerAdId = ids.banner;

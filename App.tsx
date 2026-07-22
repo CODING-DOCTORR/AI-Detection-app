@@ -17,6 +17,9 @@ import { AppInitializationProvider } from './contexts/AppInitializationContext';
 import { InterstitialTrackingProvider } from './contexts/InterstitialTrackingContext';
 import { AdManagerProvider } from './contexts/AdManagerContext';
 
+// 🆕 Custom consent modal (shown to all new users, not just EU/UK)
+import CustomConsentModal from './components/CustomConsentModal';
+
 export default function App() {
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -44,6 +47,8 @@ export default function App() {
                 <NavigationContainer>
                   <AppNavigator />
                 </NavigationContainer>
+                {/* 🆕 Rendered on top of everything, controlled by ConsentContext */}
+                <CustomConsentModal />
               </AdManagerProvider>
             </InterstitialTrackingProvider>
           </AppInitializationProvider>

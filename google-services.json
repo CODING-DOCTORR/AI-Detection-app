@@ -1,20 +1,20 @@
 {
   "project_info": {
-    "project_number": "150605444180",
-    "project_id": "deepfake-detector-3958e",
-    "storage_bucket": "deepfake-detector-3958e.firebasestorage.app"
+    "project_number": "876045078740",
+    "project_id": "deepfake-d9bf8",
+    "storage_bucket": "deepfake-d9bf8.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:150605444180:android:19f3bbfae31388412129c1",
+        "mobilesdk_app_id": "1:876045078740:android:6e919e0366bb413d686b41",
         "android_client_info": {
           "package_name": "com.daniyal_007s2.myexpoapp"
         }
       },
       "oauth_client": [
         {
-          "client_id": "150605444180-ed6ugg7chuin1ga8ckbreenicns8agu7.apps.googleusercontent.com",
+          "client_id": "876045078740-alon25r5ig3qpmie4u053e3ihq6rgrjk.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.daniyal_007s2.myexpoapp",
@@ -22,20 +22,20 @@
           }
         },
         {
-          "client_id": "150605444180-2bpbqt1fl1lddu8nun3k8s6anrmp44oe.apps.googleusercontent.com",
+          "client_id": "876045078740-v3vlmbtfkc593h4o1gr6gghn2ne0med2.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyCNub7xdu_me5Jvuc8FfwzywEPZ9nulIFg"
+          "current_key": "AIzaSyBA3OnfiPqV_srI3ZODsTes-P8yorXubpc"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "150605444180-2bpbqt1fl1lddu8nun3k8s6anrmp44oe.apps.googleusercontent.com",
+              "client_id": "876045078740-v3vlmbtfkc593h4o1gr6gghn2ne0med2.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

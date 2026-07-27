@@ -1,4 +1,4 @@
-import { AdLoadingOverlay } from "@/components/AdLoadingOverlay";
+import { AdLoadingOverlay } from "../components/AdLoadingOverlay";
 import React from "react";
 
 interface AppOpenAdLoadingModalProps {

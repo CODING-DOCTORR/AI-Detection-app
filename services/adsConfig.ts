@@ -44,7 +44,7 @@ const PROD_IDS = {
 
 const ids = (() => {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-    return PROD_IDS[platform]; // TEMP: testing real ads in dev mode
+    return __DEV__ ? TEST_IDS[platform] : PROD_IDS[platform];
 })();
 
 export const BannerAdId = ids.banner;

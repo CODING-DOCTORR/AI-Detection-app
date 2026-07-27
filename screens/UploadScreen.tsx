@@ -46,12 +46,14 @@ import AppModal from '../components/AppModal';
 import { useModal } from '../hooks/ui/useModal';
 import { useButtonInterstitialAd } from '../hooks/ads/useButtonInterstitialAd';
 
+// 🆕 CREDIT SYSTEM IMPORTS
+import { useCredits } from '../hooks/useCredits';
+import CreditsBadge from '../components/CreditsBadge';
+import RewardedAdModal from '../components/RewardedAdModal';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// 🆕 Main detection modes
 type DetectionMode = 'Deepfake' | 'AI';
-
-// 🆕 Sub-tabs per mode (removed Audio from Deepfake)
 type DeepfakeTab = 'Image' | 'Video';
 type AITab = 'Image' | 'Video' | 'Text' | 'Audio';
 type MediaTab = 'Image' | 'Video' | 'Text' | 'Audio';
@@ -75,7 +77,6 @@ const THEME = {
   textMuted: '#9CA3AF',
 };
 
-// 🆕 Tabs config per mode
 const DEEPFAKE_TABS: { key: DeepfakeTab; icon: any }[] = [
   { key: 'Image', icon: PlusCircle },
   { key: 'Video', icon: Video },
@@ -88,15 +89,13 @@ const AI_TABS: { key: AITab; icon: any }[] = [
   { key: 'Audio', icon: Music },
 ];
 
-// 🆕 Track which AI endpoints are ready (set to true when backend deploys them)
 const AI_ENDPOINT_STATUS = {
-  Image: true,   // ✅ Backend has /detect/image
-  Video: false,  // ❌ Backend doesn't have /detect/video yet
-  Text: true,    // ✅ Backend has /detect/text
-  Audio: false,  // ❌ Backend doesn't have /detect/audio yet
+  Image: true,
+  Video: false,
+  Text: true,
+  Audio: false,
 };
 
-// Analyzing messages
 const ANALYZING_MESSAGES: Record<string, string[]> = {
   'Deepfake-Image': [
     'Scanning face manipulation signs...',
@@ -141,6 +140,17 @@ export default function UploadScreen() {
   const { handlePress: handleAdPress } = useButtonInterstitialAd('Home_Button_Count');
   const { modal, hideModal, showError, showWarning, showInfo } = useModal();
 
+  // 🆕 CREDITS HOOK
+  const {
+    balance,
+    isPro,
+    canAnalyze,
+    isRewardedAdReady,
+    isRewardedAdLoading,
+    deductOne,
+    watchAdForCredit,
+  } = useCredits();
+
   const [detectionMode, setDetectionMode] = useState<DetectionMode>('Deepfake');
   const [activeTab, setActiveTab] = useState<MediaTab>('Image');
   const [analyzing, setAnalyzing] = useState(false);
@@ -150,6 +160,9 @@ export default function UploadScreen() {
   const [audioMedia, setAudioMedia] = useState<PickedMedia | null>(null);
   const [textMedia, setTextMedia] = useState('');
   const [messageIndex, setMessageIndex] = useState(0);
+
+  // 🆕 REWARDED AD MODAL STATE
+  const [rewardedModalVisible, setRewardedModalVisible] = useState(false);
 
   const wordCount = textMedia.trim().split(/\s+/).filter((w) => w.length > 0).length;
   const charCount = textMedia.length;
@@ -167,9 +180,8 @@ export default function UploadScreen() {
     setTextMedia('');
   }, []);
 
-  // 🆕 Check if the current tab is available for the selected mode
   const isCurrentTabAvailable = () => {
-    if (detectionMode === 'Deepfake') return true; // All deepfake tabs work
+    if (detectionMode === 'Deepfake') return true;
     if (detectionMode === 'AI') {
       return AI_ENDPOINT_STATUS[activeTab as keyof typeof AI_ENDPOINT_STATUS] ?? true;
     }
@@ -200,7 +212,7 @@ export default function UploadScreen() {
   const isAnalyzeDisabled = () => {
     if (analyzing) return true;
     if (activeTab === 'Text' && isTextEmpty) return true;
-    if (!isCurrentTabAvailable()) return true; // 🆕 Disable if endpoint not available
+    if (!isCurrentTabAvailable()) return true;
     return false;
   };
 
@@ -276,14 +288,18 @@ export default function UploadScreen() {
     if (activeTab === 'Text') setTextMedia('');
   }, [activeTab]);
 
-   const performAnalysis = useCallback(async () => {
+  const performAnalysis = useCallback(async () => {
+    // 🆕 DEDUCT 1 CREDIT BEFORE ANALYSIS (skip for Pro users)
+    if (!isPro) {
+      await deductOne();
+    }
+
     setAnalyzing(true);
     try {
       let result;
       let mediaUri;
       let fileName;
 
-      // ── DEEPFAKE MODE (only Image and Video) ──
       if (detectionMode === 'Deepfake') {
         if (activeTab === 'Image' && imageMedia) {
           mediaUri = imageMedia.uri;
@@ -294,9 +310,7 @@ export default function UploadScreen() {
           fileName = videoMedia.fileName;
           result = await detectDeepfakeVideo(videoMedia.uri, videoMedia.fileName);
         }
-      }
-      // ── AI MODE ──
-      else if (detectionMode === 'AI') {
+      } else if (detectionMode === 'AI') {
         if (activeTab === 'Text') {
           result = await detectText(textMedia);
         } else if (activeTab === 'Image' && imageMedia) {
@@ -314,7 +328,6 @@ export default function UploadScreen() {
         }
       }
 
-      // 🆕 SAVE TO HISTORY before navigating
       if (result) {
         try {
           await addHistoryItem({
@@ -361,7 +374,6 @@ export default function UploadScreen() {
             low_confidence: true,
           };
 
-          // 🆕 SAVE FALLBACK TO HISTORY TOO
           try {
             await addHistoryItem({
               mode: detectionMode,
@@ -398,6 +410,8 @@ export default function UploadScreen() {
       setAnalyzing(false);
     }
   }, [
+    isPro,
+    deductOne,
     detectionMode,
     activeTab,
     imageMedia,
@@ -412,7 +426,7 @@ export default function UploadScreen() {
   ]);
 
   const handleAnalyze = useCallback(async () => {
-    // 🆕 Show info if endpoint not available yet
+    // Check if endpoint is available
     if (!isCurrentTabAvailable()) {
       showInfo(
         'Coming Soon',
@@ -421,12 +435,46 @@ export default function UploadScreen() {
       return;
     }
 
+    // Check if user has content to analyze
     if (!currentHasData()) {
       showWarning('Nothing to analyze', `Please add ${activeTab.toLowerCase()} content first.`);
       return;
     }
+
+    // 🆕 CREDIT CHECK: Non-Pro users need credits
+    if (!canAnalyze) {
+      // No credits — show rewarded ad modal
+      setRewardedModalVisible(true);
+      return;
+    }
+
+    // Proceed with interstitial ad + analysis
     await handleAdPress(performAnalysis);
-  }, [currentHasData, handleAdPress, performAnalysis, showWarning, showInfo, activeTab, isCurrentTabAvailable]);
+  }, [
+    isCurrentTabAvailable,
+    currentHasData,
+    canAnalyze,
+    handleAdPress,
+    performAnalysis,
+    showWarning,
+    showInfo,
+    activeTab,
+  ]);
+
+  // 🆕 HANDLE REWARDED AD (called from RewardedAdModal)
+  const handleWatchRewardedAd = useCallback(async () => {
+    const result = await watchAdForCredit();
+
+    if (result.success) {
+      setRewardedModalVisible(false);
+      showInfo('🎉 Success!', 'You earned 1 credit. You can now analyze content.');
+    } else {
+      showError(
+        'Ad Failed',
+        result.error || 'Could not load the ad. Please try again later.'
+      );
+    }
+  }, [watchAdForCredit, showInfo, showError]);
 
   const getPickerFn = () => (activeTab === 'Audio' ? handlePickAudio : handlePickMedia);
 
@@ -498,8 +546,18 @@ export default function UploadScreen() {
                   backgroundColor: detectionMode === 'Deepfake' ? THEME.accent : 'transparent',
                 }}
               >
-                <ShieldCheck size={18} color={detectionMode === 'Deepfake' ? '#fff' : THEME.textMuted} strokeWidth={detectionMode === 'Deepfake' ? 2.5 : 2} />
-                <Text style={{ color: detectionMode === 'Deepfake' ? '#fff' : THEME.textMuted, fontSize: 14, fontWeight: detectionMode === 'Deepfake' ? '700' : '600' }}>
+                <ShieldCheck
+                  size={18}
+                  color={detectionMode === 'Deepfake' ? '#fff' : THEME.textMuted}
+                  strokeWidth={detectionMode === 'Deepfake' ? 2.5 : 2}
+                />
+                <Text
+                  style={{
+                    color: detectionMode === 'Deepfake' ? '#fff' : THEME.textMuted,
+                    fontSize: 14,
+                    fontWeight: detectionMode === 'Deepfake' ? '700' : '600',
+                  }}
+                >
                   Deepfake
                 </Text>
               </TouchableOpacity>
@@ -518,8 +576,18 @@ export default function UploadScreen() {
                   backgroundColor: detectionMode === 'AI' ? THEME.accent : 'transparent',
                 }}
               >
-                <Bot size={18} color={detectionMode === 'AI' ? '#fff' : THEME.textMuted} strokeWidth={detectionMode === 'AI' ? 2.5 : 2} />
-                <Text style={{ color: detectionMode === 'AI' ? '#fff' : THEME.textMuted, fontSize: 14, fontWeight: detectionMode === 'AI' ? '700' : '600' }}>
+                <Bot
+                  size={18}
+                  color={detectionMode === 'AI' ? '#fff' : THEME.textMuted}
+                  strokeWidth={detectionMode === 'AI' ? 2.5 : 2}
+                />
+                <Text
+                  style={{
+                    color: detectionMode === 'AI' ? '#fff' : THEME.textMuted,
+                    fontSize: 14,
+                    fontWeight: detectionMode === 'AI' ? '700' : '600',
+                  }}
+                >
                   AI Detection
                 </Text>
               </TouchableOpacity>
@@ -543,7 +611,6 @@ export default function UploadScreen() {
               {currentTabs.map((tab) => {
                 const Icon = tab.icon;
                 const active = activeTab === tab.key;
-                // 🆕 Check if this specific tab endpoint is ready
                 const isAvailable =
                   detectionMode === 'Deepfake' ||
                   AI_ENDPOINT_STATUS[tab.key as keyof typeof AI_ENDPOINT_STATUS] !== false;
@@ -567,10 +634,15 @@ export default function UploadScreen() {
                     }}
                   >
                     <Icon size={16} color={active ? '#fff' : THEME.textMuted} strokeWidth={active ? 2.5 : 2} />
-                    <Text style={{ color: active ? '#fff' : THEME.textMuted, fontSize: 14, fontWeight: active ? '700' : '600' }}>
+                    <Text
+                      style={{
+                        color: active ? '#fff' : THEME.textMuted,
+                        fontSize: 14,
+                        fontWeight: active ? '700' : '600',
+                      }}
+                    >
                       {tab.key}
                     </Text>
-                    {/* 🆕 "Soon" badge for unavailable endpoints */}
                     {!isAvailable && (
                       <View
                         style={{
@@ -581,9 +653,7 @@ export default function UploadScreen() {
                           marginLeft: 4,
                         }}
                       >
-                        <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>
-                          SOON
-                        </Text>
+                        <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>SOON</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -604,7 +674,14 @@ export default function UploadScreen() {
                     minHeight: 320,
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 12,
+                    }}
+                  >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <View
                         style={{
@@ -618,10 +695,15 @@ export default function UploadScreen() {
                       >
                         <FileText size={16} color={THEME.accent} strokeWidth={2} />
                       </View>
-                      <Text style={{ color: THEME.textLight, fontSize: 15, fontWeight: '600' }}>Enter your text</Text>
+                      <Text style={{ color: THEME.textLight, fontSize: 15, fontWeight: '600' }}>
+                        Enter your text
+                      </Text>
                     </View>
                     {textMedia.length > 0 && (
-                      <TouchableOpacity onPress={() => setTextMedia('')} style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 999, padding: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => setTextMedia('')}
+                        style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 999, padding: 6 }}
+                      >
                         <X size={14} color="#fff" />
                       </TouchableOpacity>
                     )}
@@ -653,7 +735,19 @@ export default function UploadScreen() {
                   </ScrollView>
 
                   {isTextShort && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(251,191,36,0.1)', borderWidth: 1, borderColor: 'rgba(251,191,36,0.3)', padding: 10, borderRadius: 12, marginTop: 12 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        backgroundColor: 'rgba(251,191,36,0.1)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(251,191,36,0.3)',
+                        padding: 10,
+                        borderRadius: 12,
+                        marginTop: 12,
+                      }}
+                    >
                       <AlertTriangle size={16} color="#fbbf24" strokeWidth={2} />
                       <Text style={{ flex: 1, color: '#fbbf24', fontSize: 12, fontWeight: '500' }}>
                         Results may not be accurate for text under 300 words.
@@ -662,7 +756,13 @@ export default function UploadScreen() {
                   )}
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
-                    <Text style={{ color: wordCount >= 300 ? '#22c55e' : wordCount > 0 ? '#fbbf24' : THEME.textMuted, fontSize: 12, fontWeight: '600' }}>
+                    <Text
+                      style={{
+                        color: wordCount >= 300 ? '#22c55e' : wordCount > 0 ? '#fbbf24' : THEME.textMuted,
+                        fontSize: 12,
+                        fontWeight: '600',
+                      }}
+                    >
                       Words: {wordCount} / 300+ {wordCount >= 300 ? '✓' : ''}
                     </Text>
                     <Text style={{ color: THEME.textMuted, fontSize: 12 }}>Chars: {charCount}</Text>
@@ -702,36 +802,100 @@ export default function UploadScreen() {
                           resizeMode="cover"
                         />
                       ) : (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: THEME.card2, borderRadius: 22, paddingHorizontal: 20 }}>
-                          <View style={{ position: 'absolute', top: 20, right: 20, width: 44, height: 44, borderRadius: 999, backgroundColor: THEME.accent, alignItems: 'center', justifyContent: 'center' }}>
+                        <View
+                          style={{
+                            flex: 1,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: THEME.card2,
+                            borderRadius: 22,
+                            paddingHorizontal: 20,
+                          }}
+                        >
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 20,
+                              right: 20,
+                              width: 44,
+                              height: 44,
+                              borderRadius: 999,
+                              backgroundColor: THEME.accent,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
                             <Play size={22} color="#fff" fill="#fff" />
                           </View>
-                          <View style={{ backgroundColor: 'rgba(79,70,229,0.2)', padding: 22, borderRadius: 999, marginBottom: 12 }}>
+                          <View
+                            style={{
+                              backgroundColor: 'rgba(79,70,229,0.2)',
+                              padding: 22,
+                              borderRadius: 999,
+                              marginBottom: 12,
+                            }}
+                          >
                             {renderPreviewIcon()}
                           </View>
                           <Text style={{ color: THEME.textLight, fontSize: 16, fontWeight: '700', marginBottom: 6 }}>
                             {activeTab === 'Video' ? 'Video Selected' : 'Audio Selected'}
                           </Text>
-                          <Text style={{ color: THEME.textMuted, fontSize: 12, maxWidth: '90%' }} numberOfLines={1}>
+                          <Text
+                            style={{ color: THEME.textMuted, fontSize: 12, maxWidth: '90%' }}
+                            numberOfLines={1}
+                          >
                             {currentMedia.fileName || activeTab.toLowerCase() + ' file'}
                           </Text>
                         </View>
                       )}
                       <TouchableOpacity
                         onPress={handleClearMedia}
-                        style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 999, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}
+                        style={{
+                          position: 'absolute',
+                          top: 12,
+                          right: 12,
+                          zIndex: 10,
+                          backgroundColor: 'rgba(0,0,0,0.65)',
+                          borderRadius: 999,
+                          padding: 6,
+                          borderWidth: 1,
+                          borderColor: 'rgba(255,255,255,0.15)',
+                        }}
                       >
                         <X size={16} color="#fff" />
                       </TouchableOpacity>
                     </View>
                   ) : (
                     <View style={{ alignItems: 'center' }}>
-                      <View style={{ backgroundColor: 'rgba(79,70,229,0.2)', padding: 8, borderRadius: 999, marginBottom: 20 }}>
-                        <View style={{ backgroundColor: THEME.card2, padding: 18, borderRadius: 999, borderWidth: 1, borderColor: THEME.border }}>
+                      <View
+                        style={{
+                          backgroundColor: 'rgba(79,70,229,0.2)',
+                          padding: 8,
+                          borderRadius: 999,
+                          marginBottom: 20,
+                        }}
+                      >
+                        <View
+                          style={{
+                            backgroundColor: THEME.card2,
+                            padding: 18,
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: THEME.border,
+                          }}
+                        >
                           {renderEmptyIcon()}
                         </View>
                       </View>
-                      <Text style={{ color: THEME.textLight, fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
+                      <Text
+                        style={{
+                          color: THEME.textLight,
+                          fontSize: 18,
+                          fontWeight: '700',
+                          textAlign: 'center',
+                          marginBottom: 8,
+                        }}
+                      >
                         {getUploadTitle()}
                       </Text>
                       <Text style={{ color: THEME.textMuted, fontSize: 13, textAlign: 'center' }}>
@@ -747,8 +911,30 @@ export default function UploadScreen() {
             <AdComponent placement="upload_screen" />
 
             {/* SAFETY TIP */}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14, padding: 16, marginHorizontal: 16, marginBottom: 24, borderRadius: 18, backgroundColor: THEME.card, borderWidth: 1, borderColor: THEME.border }}>
-              <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(79,70,229,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 14,
+                padding: 16,
+                marginHorizontal: 16,
+                marginBottom: 24,
+                borderRadius: 18,
+                backgroundColor: THEME.card,
+                borderWidth: 1,
+                borderColor: THEME.border,
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(79,70,229,0.18)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <ShieldAlert size={22} color={THEME.accent} strokeWidth={2} />
               </View>
               <View style={{ flex: 1 }}>
@@ -763,6 +949,9 @@ export default function UploadScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* 🆕 CREDITS BADGE */}
+            <CreditsBadge />
 
             {/* ANALYZE BUTTON */}
             <TouchableOpacity
@@ -801,24 +990,62 @@ export default function UploadScreen() {
         onClose={hideModal}
       />
 
+      {/* 🆕 REWARDED AD MODAL */}
+      <RewardedAdModal
+        visible={rewardedModalVisible}
+        onClose={() => setRewardedModalVisible(false)}
+        onWatchAd={handleWatchRewardedAd}
+        isAdReady={isRewardedAdReady}
+        isLoading={isRewardedAdLoading}
+      />
+
       {/* FULLSCREEN LOTTIE ANIMATION OVERLAY */}
       <Modal visible={analyzing} transparent statusBarTranslucent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: 'rgba(13, 11, 20, 0.98)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(13, 11, 20, 0.98)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 32,
+          }}
+        >
           <LottieView
             source={require('../assets/lottie/analyzing.json')}
             autoPlay
             loop
             speed={1}
-            style={{ width: SCREEN_WIDTH * 0.7, height: SCREEN_WIDTH * 0.7, maxWidth: 300, maxHeight: 300 }}
+            style={{
+              width: SCREEN_WIDTH * 0.7,
+              height: SCREEN_WIDTH * 0.7,
+              maxWidth: 300,
+              maxHeight: 300,
+            }}
             resizeMode="contain"
           />
 
-          <Text style={{ color: THEME.textLight, fontSize: 28, fontWeight: '800', marginTop: 24, letterSpacing: 0.5 }}>
+          <Text
+            style={{
+              color: THEME.textLight,
+              fontSize: 28,
+              fontWeight: '800',
+              marginTop: 24,
+              letterSpacing: 0.5,
+            }}
+          >
             Analyzing {detectionMode}
           </Text>
 
           <View style={{ marginTop: 12, height: 40, justifyContent: 'center' }}>
-            <Text style={{ color: THEME.accent, fontSize: 14, fontWeight: '600', textAlign: 'center', letterSpacing: 0.3 }}>
+            <Text
+              style={{
+                color: THEME.accent,
+                fontSize: 14,
+                fontWeight: '600',
+                textAlign: 'center',
+                letterSpacing: 0.3,
+              }}
+            >
               {(ANALYZING_MESSAGES[`${detectionMode}-${activeTab}`] || ANALYZING_MESSAGES['AI-Image'])[messageIndex]}
             </Text>
           </View>
@@ -837,7 +1064,15 @@ export default function UploadScreen() {
             ))}
           </View>
 
-          <View style={{ position: 'absolute', bottom: 60, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 60,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' }} />
             <Text style={{ color: THEME.textMuted, fontSize: 12, fontWeight: '500' }}>
               Powered by advanced AI detection

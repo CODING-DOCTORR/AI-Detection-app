@@ -3,12 +3,12 @@ import { initializeAuth, getAuth, Auth } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAar-4AYKxdOJBZ4Eakn45Noui-raV9IKg",
-    authDomain: "deepfake-detector-3958e.firebaseapp.com",
-    projectId: "deepfake-detector-3958e",
-    storageBucket: "deepfake-detector-3958e.firebasestorage.app",
-    messagingSenderId: "150605444180",
-    appId: "1:150605444180:web:4c7b3932528709582129c1"
+    apiKey: "AIzaSyAdGIlsi1YSFQdJm59ahkWOSb3KGxojN_c",
+    authDomain: "deepfake-d9bf8.firebaseapp.com",
+    projectId: "deepfake-d9bf8",
+    storageBucket: "deepfake-d9bf8.firebasestorage.app",
+    messagingSenderId: "876045078740",
+    appId: "1:876045078740:web:8f52b21bcf872e0a686b41"
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
